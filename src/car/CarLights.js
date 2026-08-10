@@ -1,7 +1,7 @@
 /**
- * CarLights — headlights (angular LED strips with point lights)
- * and taillights (full-width LED bar with accents).
- * Visibility is driven by the StateManager via the EventBus.
+ * CarLights — headlights (angular LED DRL strips with point lights),
+ * taillights (full-width LED bar with accents), fog lights, and
+ * turn signals. Visibility driven by the StateManager via EventBus.
  */
 import * as THREE from 'three';
 import { CAR_DIMENSIONS as D } from '../config/carSpecs.js';
@@ -14,6 +14,7 @@ class CarLights {
     this.group = new THREE.Group();
     this.group.name = 'CarLights';
     this.headlights = [];
+    this.taillights = [];
     this._build();
     this._bindEvents();
   }
@@ -21,33 +22,72 @@ class CarLights {
   _build() {
     const headlightMat = matLib.get('headlight');
     const taillightMat = matLib.get('taillight');
+    const darkPlastic = matLib.get('darkPlastic');
+    const chrome = matLib.get('chrome');
 
-    // Headlights
+    // ---- Headlights ----
     [0.75, -0.75].forEach((z) => {
+      const housing = new THREE.Mesh(
+        new THREE.BoxGeometry(0.15, 0.15, 0.6),
+        darkPlastic
+      );
+      housing.position.set(-2.18, D.rideHeight + 0.3, z);
+      this.group.add(housing);
+
       const hl = new THREE.Mesh(
         new THREE.BoxGeometry(0.12, 0.08, 0.55),
         headlightMat
       );
       hl.position.set(-2.2, D.rideHeight + 0.3, z);
-      hl.rotation.y = z > 0 ? 0.12 : -0.12;
       this.group.add(hl);
 
-      const pl = new THREE.PointLight(0xffffff, 0.6, 6);
-      pl.position.set(-2.3, D.rideHeight + 0.3, z);
+      const lens = new THREE.Mesh(
+        new THREE.SphereGeometry(0.06, 16, 16),
+        chrome
+      );
+      lens.position.set(-2.18, D.rideHeight + 0.28, z * 0.85);
+      this.group.add(lens);
+
+      const pl = new THREE.PointLight(0xfff5e0, 0.8, 8, 2);
+      pl.position.set(-2.35, D.rideHeight + 0.3, z);
       this.group.add(pl);
 
-      this.headlights.push({ mesh: hl, light: pl });
+      this.headlights.push({ mesh: hl, light: pl, lens });
     });
 
-    // Taillight bar — full width
+    // ---- DRL signature strip ----
+    const drl = new THREE.Mesh(
+      new THREE.BoxGeometry(0.03, 0.03, 1.3),
+      headlightMat
+    );
+    drl.position.set(-2.25, D.rideHeight + 0.42, 0);
+    this.group.add(drl);
+
+    // ---- Fog lights ----
+    [0.55, -0.55].forEach((z) => {
+      const fog = new THREE.Mesh(
+        new THREE.CircleGeometry(0.05, 16),
+        headlightMat
+      );
+      fog.position.set(-2.28, D.rideHeight + 0.12, z);
+      fog.rotation.y = Math.PI / 2;
+      this.group.add(fog);
+
+      const fogLight = new THREE.PointLight(0xfff5e0, 0.3, 4);
+      fogLight.position.set(-2.32, D.rideHeight + 0.12, z);
+      this.group.add(fogLight);
+      this.headlights.push({ mesh: fog, light: fogLight, lens: null });
+    });
+
+    // ---- Taillight bar ----
     const taillight = new THREE.Mesh(
       new THREE.BoxGeometry(0.06, 0.06, 1.85),
       taillightMat
     );
     taillight.position.set(2.32, D.rideHeight + 0.4, 0);
     this.group.add(taillight);
+    this.taillights.push(taillight);
 
-    // Taillight accents
     [1, -1].forEach((z) => {
       const t = new THREE.Mesh(
         new THREE.BoxGeometry(0.05, 0.04, 0.4),
@@ -55,19 +95,38 @@ class CarLights {
       );
       t.position.set(2.33, D.rideHeight + 0.3, z * 0.65);
       this.group.add(t);
+      this.taillights.push(t);
+    });
+
+    // ---- Reverse lights ----
+    [0.7, -0.7].forEach((z) => {
+      const reverse = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.04, 0.08),
+        new THREE.MeshStandardMaterial({
+          color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 1.0,
+        })
+      );
+      reverse.position.set(2.33, D.rideHeight + 0.2, z);
+      this.group.add(reverse);
     });
   }
 
   _bindEvents() {
     bus.on('state:change:lightsOn', (v) => this.setHeadlightVisibility(v));
-    // Sync initial state
+    bus.on('braking', (intensity) => this.setBrakeLightIntensity(intensity));
     this.setHeadlightVisibility(state.get('lightsOn'));
   }
 
   setHeadlightVisibility(v) {
     this.headlights.forEach(({ mesh, light }) => {
       mesh.visible = v;
-      light.visible = v;
+      if (light) light.visible = v;
+    });
+  }
+
+  setBrakeLightIntensity(intensity) {
+    this.taillights.forEach((t) => {
+      t.material.emissiveIntensity = 3.0 + intensity * 4.0;
     });
   }
 

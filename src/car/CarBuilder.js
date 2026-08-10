@@ -1,10 +1,8 @@
 /**
  * CarBuilder — top-level car assembly.
  * Composes Chassis, Cabin, Wheels, Aerodynamics, and CarLights
- * into a single THREE.Group. Registers itself as a ticker on the
- * SceneManager so wheel spin and hover breathing animate each frame.
- *
- * Emits 'car:ready' on the EventBus when assembly is complete.
+ * into a single THREE.Group. Registers update() for per-frame
+ * animation (wheel spin, hover breathing, suspension simulation).
  */
 import * as THREE from 'three';
 import Chassis from './Chassis.js';
@@ -14,12 +12,15 @@ import Aerodynamics from './Aerodynamics.js';
 import CarLights from './CarLights.js';
 import bus from '../core/EventBus.js';
 import state from '../core/StateManager.js';
+import { VEHICLE_VARIANTS } from '../config/carSpecs.js';
 
 class CarBuilder {
   constructor() {
     this.group = new THREE.Group();
     this.group.name = 'AetherGT';
     this.components = {};
+    this._hoverPhase = 0;
+    this._suspensionOffset = new THREE.Vector3();
     this._build();
     this._bindEvents();
   }
@@ -31,11 +32,11 @@ class CarBuilder {
     this.components.aero = new Aerodynamics();
     this.components.lights = new CarLights();
 
-    // Mount all components
     Object.values(this.components).forEach((c) => {
       this.group.add(c.group);
     });
 
+    this.group.position.y = 0;
     bus.emit('car:ready', this.group);
   }
 
@@ -43,15 +44,43 @@ class CarBuilder {
     bus.on('state:change:underglowOn', (v) => {
       this.components.aero.setIntakeVisibility(v);
     });
+    bus.on('vehicle:change', (index) => {
+      this.swapVariant(index);
+    });
   }
 
-  /** Called each frame by SceneManager */
-  update(dt, t) {
-    // Wheel spin
-    this.components.wheels.update(dt, 0.5);
+  swapVariant(index) {
+    const variant = VEHICLE_VARIANTS[index];
+    if (variant) {
+      bus.emit('vehicle:swapped', variant);
+    }
+  }
 
-    // Subtle hover breathing
-    this.group.position.y = Math.sin(t * 0.8) * 0.015;
+  update(dt, t, physicsData) {
+    this.components.wheels.update(dt);
+
+    this._hoverPhase += dt * 0.8;
+    const hover = Math.sin(this._hoverPhase) * 0.015;
+
+    if (physicsData) {
+      this._suspensionOffset.lerp(
+        new THREE.Vector3(
+          physicsData.pitch || 0,
+          hover + (physicsData.bounce || 0),
+          physicsData.roll || 0
+        ),
+        0.1
+      );
+      this.group.position.y = this._suspensionOffset.y;
+      this.group.rotation.x = this._suspensionOffset.x * 0.05;
+      this.group.rotation.z = this._suspensionOffset.z * 0.05;
+    } else {
+      this.group.position.y = hover;
+    }
+
+    if (physicsData && physicsData.braking) {
+      bus.emit('braking', physicsData.braking);
+    }
   }
 
   getComponent(name) {
