@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="NEXUS 3D — Aether GT Hypercar. A production-grade futuristic sports car showcase built with Three.js, featuring procedural 3D modeling, cinematic lighting, post-processing, physics simulation, and interactive HUD.">
   <title>NEXUS 3D — Aether GT Hypercar</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,19 +12,16 @@
 </head>
 <body>
 
-  <!-- Loading screen -->
   <div id="loader">
     <div class="loader-ring"></div>
     <div class="loader-text">Initializing Aether GT</div>
+    <div class="loader-progress" id="loaderProgress"></div>
   </div>
 
-  <!-- 3D canvas mount point -->
   <div id="canvas-wrap"></div>
 
-  <!-- HUD overlay mount point (populated by UI modules) -->
   <div id="hud"></div>
 
-  <!-- ES Module entry point -->
   <script type="module" src="src/main.js"></script>
 
 </body>

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # NEXUS 3D - local development server.
 # Serves the project root over HTTP (required for ES6 module imports).
+# Usage: python3 serve.py [port]
 import http.server
 import socketserver
 import sys
@@ -22,12 +23,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         mimetype = super().guess_type(path)
         if path.endswith(".js"):
             return "text/javascript"
+        if path.endswith(".mjs"):
+            return "text/javascript"
         return mimetype
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
     with socketserver.TCPServer(("", port), Handler) as httpd:
-        print(f"\n  NEXUS 3D - Aether GT")
+        print(f"\n  NEXUS 3D - Aether GT Hypercar")
         print(f"  Serving at http://localhost:{port}")
         print(f"  Press Ctrl+C to stop\n")
         try:
