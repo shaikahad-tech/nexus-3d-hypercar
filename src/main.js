@@ -20,8 +20,6 @@
  * between siblings. The only thing that knows about everything is
  * this file.
  */
-import * as THREE from 'three';
-
 import SceneManager from './scene/SceneManager.js';
 import LightingRig from './scene/LightingRig.js';
 import Environment from './scene/Environment.js';
@@ -73,13 +71,36 @@ class App {
     this.keyboard = null;
     this.hotspots = null;
     this.screenshot = null;
+    this._fpsHistory = [];
+    this._perfCheckTimer = 0;
+  }
+
+  /** Check if WebGL is available before doing anything else */
+  _checkWebGL() {
+    try {
+      const canvas = document.createElement('canvas');
+      const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+      if (!gl) throw new Error('No WebGL context');
+      return true;
+    } catch (e) {
+      const errEl = document.getElementById('webgl-error');
+      const loader = document.getElementById('loader');
+      if (loader) loader.style.display = 'none';
+      if (errEl) errEl.style.display = 'flex';
+      return false;
+    }
   }
 
   async init() {
     log('[App] initializing...');
 
+    if (!this._checkWebGL()) return;
+
     const container = document.getElementById('canvas-wrap');
     this.sceneMgr = new SceneManager(container);
+
+    // Wire loading progress bar to AssetLoader events
+    this._wireLoader();
 
     const loader = new AssetLoader(this.sceneMgr.renderer);
     this.env = new Environment(this.sceneMgr.scene, this.sceneMgr.renderer, loader);
@@ -136,6 +157,9 @@ class App {
       this.postfx.setSize(width, height);
     });
 
+    // Screenshot flash effect
+    bus.on('screenshot:saved', () => this._flashScreen());
+
     state.set('scene.ready', true);
     state.set('scene.assetsLoaded', true);
     bus.emit('app:ready');
@@ -148,6 +172,31 @@ class App {
     }
 
     log('[App] ready — all subsystems initialized');
+  }
+
+  /** Wire the AssetLoader progress events to the loading bar UI */
+  _wireLoader() {
+    const bar = document.getElementById('loaderBar');
+    const text = document.getElementById('loaderProgress');
+
+    bus.on('assets:progress', ({ completed, total, progress, key }) => {
+      const pct = Math.round(progress * 100);
+      if (bar) bar.style.width = pct + '%';
+      if (text) text.textContent = `Loading ${key}... ${pct}%`;
+    });
+
+    bus.on('assets:complete', () => {
+      if (bar) bar.style.width = '100%';
+      if (text) text.textContent = 'Starting render engine...';
+    });
+  }
+
+  /** Flash effect when taking a screenshot */
+  _flashScreen() {
+    const flash = document.getElementById('screenshot-flash');
+    if (!flash) return;
+    flash.style.opacity = '0.8';
+    setTimeout(() => { flash.style.opacity = '0'; }, 150);
   }
 
   _tick(dt, t) {
@@ -168,7 +217,29 @@ class App {
     this.hud.updateRPM(t, physicsData.rpm, physicsData.speed);
     this.perfMeter.update();
 
+    // Performance auto-scaling — check FPS every 3 seconds
+    this._perfCheckTimer += dt;
+    if (this._perfCheckTimer > 3.0) {
+      this._perfCheckTimer = 0;
+      this._autoScaleQuality();
+    }
+
     this.postfx.render();
+  }
+
+  /** Automatically reduce visual quality if FPS drops */
+  _autoScaleQuality() {
+    const info = this.sceneMgr.renderer.info;
+    // Use the perf meter's FPS if available, otherwise estimate
+    const fps = this.perfMeter?.frames ?
+      Math.round((this.perfMeter.frames * 1000) / (performance.now() - this.perfMeter.lastTime + 1)) : 60;
+
+    if (fps < 30 && state.get('shadowsEnabled')) {
+      log('[App] FPS low, disabling shadows for performance');
+      this.sceneMgr.renderer.shadowMap.enabled = false;
+      state.set('shadowsEnabled', false);
+      this.sceneMgr.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+    }
   }
 
   dispose() {
