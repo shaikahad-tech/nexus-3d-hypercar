@@ -1,8 +1,9 @@
 /**
  * SceneManager — owns the renderer, scene graph, camera, and render loop.
- * Provides a single update(dt, t) entry point that the Director calls
- * each frame; subsystems register themselves as "tickers" to receive
- * per-frame updates without owning the RAF loop themselves.
+ * Provides a single update(dt, t) entry point; subsystems register
+ * themselves as "tickers" to receive per-frame updates without owning
+ * the RAF loop themselves. Handles pixel ratio, resize, and exposes
+ * the renderer for post-processing pipelines.
  */
 import * as THREE from 'three';
 import bus from '../core/EventBus.js';
@@ -13,6 +14,7 @@ class SceneManager {
     this.container = container;
     this.tickers = [];
     this._running = false;
+    this._paused = false;
 
     this._createRenderer();
     this._createScene();
@@ -29,6 +31,7 @@ class SceneManager {
       antialias: true,
       alpha: true,
       powerPreference: 'high-performance',
+      preserveDrawingBuffer: true, // needed for screenshots
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -38,6 +41,7 @@ class SceneManager {
     this.renderer.toneMappingExposure = 1.15;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.container.appendChild(this.renderer.domElement);
+    this.domElement = this.renderer.domElement;
   }
 
   _createScene() {
@@ -76,12 +80,17 @@ class SceneManager {
     this._running = false;
   }
 
+  pause() { this._paused = true; }
+  resume() { this._paused = false; }
+
   _loop() {
     if (!this._running) return;
     requestAnimationFrame(() => this._loop());
-    const dt = this.clock.getDelta();
+    const dt = Math.min(this.clock.getDelta(), 0.1); // clamp to avoid jumps
     const t = this.clock.getElapsedTime();
-    this._update(dt, t);
+    if (!this._paused) {
+      this._update(dt, t);
+    }
   }
 
   _update(dt, t) {
@@ -89,21 +98,24 @@ class SceneManager {
       ticker(dt, t);
     }
     bus.emit('frame:render', { dt, t });
-    this.renderer.render(this.scene, this.camera);
+    // Note: actual render is handled by PostFX if active
   }
 
   _onResize() {
-    this.camera.aspect = window.innerWidth / window.innerHeight;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
-    bus.emit('scene:resize', {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    });
+    this.renderer.setSize(w, h);
+    bus.emit('scene:resize', { width: w, height: h });
   }
 
-  get domElement() {
-    return this.renderer.domElement;
+  setExposure(v) {
+    this.renderer.toneMappingExposure = v;
+  }
+
+  setPixelRatio(v) {
+    this.renderer.setPixelRatio(v);
   }
 
   dispose() {

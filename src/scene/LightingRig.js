@@ -1,14 +1,24 @@
 /**
- * LightingRig — cinematic 4-point studio lighting.
- * Key (directional, shadow-casting), Rim (cyan backlight),
- * Fill (warm accent), and overhead Spot for a dramatic pool.
+ * LightingRig — cinematic 5-point studio lighting.
+ * Key (directional, shadow-casting), Rim (backlight),
+ * Fill (bounce), overhead Spot, and Hemisphere ambient.
+ *
+ * All light parameters are configurable and can be animated
+ * for scene mode transitions (studio → day → night etc).
  */
 import * as THREE from 'three';
+import bus from '../core/EventBus.js';
+import { lerp } from '../utils/math.js';
 
 class LightingRig {
   constructor(scene) {
     this.scene = scene;
     this.lights = {};
+    this._targetConfig = null;
+    this._tweenT = 0;
+    this._tweenDuration = 1.5;
+    this._tweening = false;
+    this._fromConfig = null;
     this._build();
   }
 
@@ -33,13 +43,13 @@ class LightingRig {
     this.lights.key = key;
     this.scene.add(key);
 
-    // Rim light — cyan backlight for edge separation
+    // Rim light — backlight for edge separation
     const rim = new THREE.DirectionalLight(0x00d9ff, 1.6);
     rim.position.set(-7, 5, -8);
     this.lights.rim = rim;
     this.scene.add(rim);
 
-    // Fill light — warm red bounce
+    // Fill light — warm bounce
     const fill = new THREE.DirectionalLight(0xff3d2e, 0.7);
     fill.position.set(-4, 3, 8);
     this.lights.fill = fill;
@@ -54,11 +64,118 @@ class LightingRig {
     this.lights.spot = spot;
     this.scene.add(spot);
     this.scene.add(spot.target);
+
+    // Listen for scene mode changes
+    bus.on('sceneMode:change', (mode) => this.transitionTo(mode.lights));
+  }
+
+  transitionTo(lightsConfig, duration = 1.5) {
+    this._fromConfig = this._captureCurrent();
+    this._targetConfig = lightsConfig;
+    this._tweenDuration = duration;
+    this._tweenT = 0;
+    this._tweening = true;
+  }
+
+  _captureCurrent() {
+    return {
+      hemi: {
+        sky: this.lights.hemi.color.getHex(),
+        ground: this.lights.hemi.groundColor.getHex(),
+        intensity: this.lights.hemi.intensity,
+      },
+      key: {
+        color: this.lights.key.color.getHex(),
+        intensity: this.lights.key.intensity,
+        pos: this.lights.key.position.toArray(),
+      },
+      rim: {
+        color: this.lights.rim.color.getHex(),
+        intensity: this.lights.rim.intensity,
+        pos: this.lights.rim.position.toArray(),
+      },
+      fill: {
+        color: this.lights.fill.color.getHex(),
+        intensity: this.lights.fill.intensity,
+        pos: this.lights.fill.position.toArray(),
+      },
+      spot: {
+        color: this.lights.spot.color.getHex(),
+        intensity: this.lights.spot.intensity,
+        pos: this.lights.spot.position.toArray(),
+      },
+    };
+  }
+
+  update(dt) {
+    if (!this._tweening) return;
+    this._tweenT += dt / this._tweenDuration;
+    const t = Math.min(this._tweenT, 1);
+    // Ease in-out
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
+    const f = this._fromConfig;
+    const to = this._targetConfig;
+
+    if (to.hemi) {
+      this.lights.hemi.color.lerpColors(
+        new THREE.Color(f.hemi.sky), new THREE.Color(to.hemi.sky), e
+      );
+      this.lights.hemi.groundColor.lerpColors(
+        new THREE.Color(f.hemi.ground), new THREE.Color(to.hemi.ground), e
+      );
+      this.lights.hemi.intensity = lerp(f.hemi.intensity, to.hemi.intensity, e);
+    }
+
+    if (to.key) {
+      this.lights.key.color.lerpColors(
+        new THREE.Color(f.key.color), new THREE.Color(to.key.color), e
+      );
+      this.lights.key.intensity = lerp(f.key.intensity, to.key.intensity, e);
+      this.lights.key.position.lerpVectors(
+        new THREE.Vector3(...f.key.pos), new THREE.Vector3(...to.key.pos), e
+      );
+    }
+
+    if (to.rim) {
+      this.lights.rim.color.lerpColors(
+        new THREE.Color(f.rim.color), new THREE.Color(to.rim.color), e
+      );
+      this.lights.rim.intensity = lerp(f.rim.intensity, to.rim.intensity, e);
+      this.lights.rim.position.lerpVectors(
+        new THREE.Vector3(...f.rim.pos), new THREE.Vector3(...to.rim.pos), e
+      );
+    }
+
+    if (to.fill) {
+      this.lights.fill.color.lerpColors(
+        new THREE.Color(f.fill.color), new THREE.Color(to.fill.color), e
+      );
+      this.lights.fill.intensity = lerp(f.fill.intensity, to.fill.intensity, e);
+      this.lights.fill.position.lerpVectors(
+        new THREE.Vector3(...f.fill.pos), new THREE.Vector3(...to.fill.pos), e
+      );
+    }
+
+    if (to.spot) {
+      this.lights.spot.color.lerpColors(
+        new THREE.Color(f.spot.color), new THREE.Color(to.spot.color), e
+      );
+      this.lights.spot.intensity = lerp(f.spot.intensity, to.spot.intensity, e);
+      this.lights.spot.position.lerpVectors(
+        new THREE.Vector3(...f.spot.pos), new THREE.Vector3(...to.spot.pos), e
+      );
+    }
+
+    if (t >= 1) {
+      this._tweening = false;
+    }
   }
 
   setKeyIntensity(v) { this.lights.key.intensity = v; }
   setRimIntensity(v) { this.lights.rim.intensity = v; }
   setSpotIntensity(v) { this.lights.spot.intensity = v; }
+  setShadowEnabled(v) { this.lights.key.castShadow = v; }
 
   dispose() {
     Object.values(this.lights).forEach((l) => {
