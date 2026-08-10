@@ -34,6 +34,7 @@ class Configurator {
 
     panel.innerHTML = `
       <div class="panel-label">Configurator</div>
+
       <div class="config-tabs">
         <button class="config-tab active" data-tab="paint">Paint</button>
         <button class="config-tab" data-tab="wheels">Wheels</button>
@@ -41,8 +42,19 @@ class Configurator {
         <button class="config-tab" data-tab="camera">Camera</button>
       </div>
 
+      <!-- Paint tab -->
       <div class="config-tab-content active" data-content="paint">
         <div class="color-grid" id="colorGrid">${this._paintSwatches()}</div>
+
+        <!-- Custom color picker -->
+        <div class="config-section">
+          <div class="config-section-label">Custom Color</div>
+          <div class="custom-color-row">
+            <input type="color" id="customColorPicker" value="#ff3d2e" class="color-input">
+            <button class="action-btn compact" id="applyCustomColor">Apply</button>
+          </div>
+        </div>
+
         <div class="config-section">
           <div class="config-section-label">Toggles</div>
           ${this._toggleRow('lightsOn', 'Headlights')}
@@ -50,11 +62,13 @@ class Configurator {
           ${this._toggleRow('autoRotate', 'Auto-Rotate')}
           ${this._toggleRow('floorVisible', 'Studio Floor')}
           ${this._toggleRow('particlesVisible', 'Particles')}
+          ${this._toggleRow('hotspotsVisible', 'Hotspots')}
           ${this._toggleRow('physicsEnabled', 'Physics Sim')}
           ${this._toggleRow('audioEnabled', 'Audio Engine')}
         </div>
       </div>
 
+      <!-- Wheels tab -->
       <div class="config-tab-content" data-content="wheels">
         <div class="config-section">
           <div class="config-section-label">Rim Finish</div>
@@ -66,6 +80,7 @@ class Configurator {
         </div>
       </div>
 
+      <!-- Scene tab -->
       <div class="config-tab-content" data-content="scene">
         <div class="config-section">
           <div class="config-section-label">Environment</div>
@@ -77,10 +92,15 @@ class Configurator {
         </div>
       </div>
 
+      <!-- Camera tab -->
       <div class="config-tab-content" data-content="camera">
         <div class="config-section">
           <div class="config-section-label">Camera Presets</div>
           <div class="camera-grid" id="cameraGrid">${this._cameraButtons()}</div>
+        </div>
+        <div class="config-section">
+          <div class="config-section-label">Quality</div>
+          ${this._toggleRow('shadowsEnabled', 'Shadows')}
         </div>
         <div class="config-section">
           <button class="action-btn" id="cinematicBtn">Play Cinematic</button>
@@ -140,6 +160,7 @@ class Configurator {
   }
 
   _bindEvents() {
+    // Tab switching
     document.querySelectorAll('.config-tab').forEach((tab) => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.config-tab').forEach(t => t.classList.remove('active'));
@@ -150,6 +171,7 @@ class Configurator {
       });
     });
 
+    // Paint swatch clicks
     const grid = document.getElementById('colorGrid');
     if (grid) {
       grid.addEventListener('click', (e) => {
@@ -164,6 +186,26 @@ class Configurator {
       });
     }
 
+    // Custom color picker
+    const applyBtn = document.getElementById('applyCustomColor');
+    const colorInput = document.getElementById('customColorPicker');
+    if (applyBtn && colorInput) {
+      applyBtn.addEventListener('click', () => {
+        const hexStr = colorInput.value;
+        const hex = parseInt(hexStr.replace('#', ''), 16);
+        bus.emit('paint:change', {
+          hex,
+          metalness: 0.9,
+          roughness: 0.25,
+          clearcoat: 1.0,
+          category: 'custom',
+          flakeIntensity: 0.7,
+        });
+        bus.emit('audio:click');
+      });
+    }
+
+    // Rim swatch clicks
     const rimGrid = document.getElementById('rimGrid');
     if (rimGrid) {
       rimGrid.addEventListener('click', (e) => {
@@ -178,6 +220,7 @@ class Configurator {
       });
     }
 
+    // Caliper swatch clicks
     const caliperGrid = document.getElementById('caliperGrid');
     if (caliperGrid) {
       caliperGrid.addEventListener('click', (e) => {
@@ -192,6 +235,7 @@ class Configurator {
       });
     }
 
+    // Scene mode buttons
     document.querySelectorAll('.scene-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.scene-btn').forEach(b => b.classList.remove('active'));
@@ -201,6 +245,7 @@ class Configurator {
       });
     });
 
+    // Vehicle buttons
     document.querySelectorAll('.vehicle-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.vehicle-btn').forEach(b => b.classList.remove('active'));
@@ -212,6 +257,7 @@ class Configurator {
       });
     });
 
+    // Camera preset buttons
     document.querySelectorAll('.camera-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         bus.emit('camera:preset', btn.dataset.preset);
@@ -219,6 +265,7 @@ class Configurator {
       });
     });
 
+    // Cinematic button
     const cinBtn = document.getElementById('cinematicBtn');
     if (cinBtn) {
       cinBtn.addEventListener('click', () => {
@@ -233,11 +280,13 @@ class Configurator {
       });
     }
 
+    // Screenshot button
     document.getElementById('screenshotBtn')?.addEventListener('click', () => {
       bus.emit('screenshot');
       bus.emit('audio:click');
     });
 
+    // Toggle clicks (including new hotspotsVisible and shadowsEnabled)
     document.querySelectorAll('.toggle').forEach((t) => {
       t.addEventListener('click', () => {
         const key = t.dataset.toggle;
@@ -249,6 +298,7 @@ class Configurator {
       });
     });
 
+    // Listen for cinematic mode state changes
     bus.on('state:change:cinematicMode', (v) => {
       const btn = document.getElementById('cinematicBtn');
       if (btn) btn.textContent = v ? 'Stop Cinematic' : 'Play Cinematic';

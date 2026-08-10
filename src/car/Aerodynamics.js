@@ -3,14 +3,12 @@
  * rear diffuser with chrome fins, adaptive rear wing with endplates,
  * side skirts, side air intakes with glow strips, NACA ducts, and
  * canard fins on the front corners.
- *
- * These functional-looking elements sell the aggressive sporty look
- * and are designed to look like real race-car aerodynamic components.
  */
 import * as THREE from 'three';
 import { roundedBox } from '../utils/geometry.js';
 import { CAR_DIMENSIONS as D } from '../config/carSpecs.js';
-import matLib from '../materials/MaterialLibrary.js';n
+import matLib from '../materials/MaterialLibrary.js';
+
 class Aerodynamics {
   constructor() {
     this.group = new THREE.Group();
