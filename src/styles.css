@@ -20,6 +20,10 @@
  *  14. Scene/vehicle/camera buttons
  *  15. Action buttons
  *  16. Responsive
+ *  17. Loader progress bar
+ *  18. Screenshot flash
+ *  19. WebGL error fallback
+ *  20. Custom color picker
  */
 
 /* ---- 1. Design tokens ---- */
@@ -395,6 +399,13 @@ canvas { display: block; }
 }
 .action-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+.action-btn.compact {
+  width: auto;
+  padding: 6px 12px;
+  font-size: 10px;
+  margin-bottom: 0;
+}
+
 /* ---- 7. Bottom bar ---- */
 .hud-bottombar {
   position: fixed;
@@ -527,6 +538,87 @@ canvas { display: block; }
   font-size: 11px;
   color: var(--accent);
 }
+
+/* ---- 17. Loader progress bar ---- */
+.loader-bar-wrap {
+  width: 220px;
+  height: 4px;
+  background: var(--surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.loader-bar {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* ---- 18. Screenshot flash ---- */
+#screenshot-flash {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+/* ---- 19. WebGL error fallback ---- */
+#webgl-error {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+#webgl-error .error-content {
+  max-width: 420px;
+  text-align: center;
+}
+
+#webgl-error h1 {
+  font-family: var(--font-body);
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
+#webgl-error p {
+  font-size: 14px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+/* ---- 20. Custom color picker ---- */
+.custom-color-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.color-input {
+  width: 48px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  cursor: pointer;
+  padding: 2px;
+}
+
+.color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.color-input::-webkit-color-swatch { border: none; border-radius: 4px; }
+.color-input::-moz-color-swatch { border: none; border-radius: 4px; }
 
 /* ---- 16. Responsive ---- */
 @media (max-width: 1024px) {
