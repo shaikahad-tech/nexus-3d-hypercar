@@ -1,6 +1,6 @@
 # NEXUS 3D — Aether GT Hypercar
 
-A production-grade, futuristic sports car showcase built with **Three.js** and a fully modular ES6 architecture. The car is modeled procedurally in code — no external 3D files — and rendered with cinematic studio lighting, post-processing bloom, and an interactive HUD.
+A production-grade, futuristic sports car showcase built with **Three.js** and a fully modular ES6 architecture. The car is modeled procedurally in code — no external 3D files — and rendered with cinematic studio lighting, post-processing bloom, physics simulation, procedural audio, and an interactive HUD.
 
 ---
 
@@ -14,123 +14,126 @@ python3 serve.py
 npx serve .
 ```
 
-Then open `http://localhost:8000` in your browser.
-
-> **Note:** ES6 modules require serving over HTTP — opening `index.html` directly via `file://` will not work due to browser CORS restrictions on module imports.
+Open `http://localhost:8000` in your browser. ES6 modules require serving over HTTP — `file://` won't work.
 
 ---
 
 ## Architecture
 
-The project is structured as a **layered, event-driven architecture**. No subsystem imports another directly — all cross-module communication flows through a central `EventBus`. This makes every component independently testable, swappable, and disposable.
+Layered, event-driven architecture. No subsystem imports another directly — all cross-module communication flows through a central `EventBus`.
 
 ```
 src/
-├── main.js                    # Application bootstrap — wires all subsystems
-├── styles.css                 # Global design tokens + HUD styles
+├── main.js                        # Application bootstrap — wires all 13 subsystems
+├── styles.css                     # Global design tokens + HUD styles (16 sections)
 ├── config/
-│   └── carSpecs.js            # Single source of truth: specs, dimensions, paint colors
+│   ├── carSpecs.js                # 3 vehicle variants with full spec sheets
+│   ├── paintColors.js             # 18 paint colors (metallic/pearl/matte/candy/chrome) + rim finishes + caliper colors
+│   ├── sceneModes.js              # 5 scene modes (studio/day/sunset/night/cyberpunk)
+│   ├── cameraPresets.js           # 12 camera presets + cinematic sequence
+│   ├── hotspots.js                # 6 interactive info hotspots
+│   └── keybindings.js             # Keyboard shortcut mappings
 ├── core/
-│   ├── EventBus.js            # Lightweight pub/sub for decoupled communication
-│   ├── StateManager.js        # Centralized reactive state with change notifications
-│   └── AssetLoader.js         # Async resource loading (env maps, textures) with progress
+│   ├── EventBus.js                # Pub/sub with history + error isolation
+│   ├── StateManager.js            # Centralized reactive state with serialize/deserialize
+│   └── AssetLoader.js             # Async resource loading with progress tracking
 ├── scene/
-│   ├── SceneManager.js        # Owns renderer, scene graph, camera, RAF loop
-│   ├── LightingRig.js         # 4-point cinematic studio lighting (key/rim/fill/spot)
-│   ├── Environment.js         # Procedural gradient environment map for reflections
-│   ├── PostFX.js              # Bloom + SMAA post-processing pipeline
-│   └── CameraDirector.js      # OrbitControls + cinematic camera presets + intro animation
+│   ├── SceneManager.js            # Renderer, scene graph, camera, RAF loop, screenshot support
+│   ├── LightingRig.js             # 5-point lighting with smooth mode transitions
+│   ├── Environment.js             # Procedural env maps with per-mode caching
+│   ├── PostFX.js                  # Bloom + SMAA + Vignette + OutputPass pipeline
+│   ├── CameraDirector.js          # OrbitControls + 12 presets + cinematic sequence player
+│   └── SceneModeManager.js        # Coordinates lighting/env/floor/bloom transitions
 ├── car/
-│   ├── CarBuilder.js          # Top-level assembly — composes all car components
-│   ├── Chassis.js             # Body panels: lower body, mid, hood, nose, rear deck
-│   ├── Cabin.js               # Glass canopy + roof frame + pillar accents
-│   ├── Wheels.js              # 4-wheel assembly: tires, rims, brake discs, 5-spoke aero
-│   ├── Aerodynamics.js        # Splitter, diffuser, wing, skirts, side intakes
-│   └── CarLights.js           # Headlights (LED + point lights) + taillight bar
+│   ├── CarBuilder.js              # Top-level assembly + physics integration
+│   ├── Chassis.js                 # Body, hood, nose, doors, mirrors, grille, vents
+│   ├── Cabin.js                   # Glass canopy, pillars, interior, seats, steering yoke, screens
+│   ├── Wheels.js                  # Tires, rims, brake discs, calipers, 5-spoke aero, lug nuts
+│   ├── Aerodynamics.js            # Splitter, diffuser, wing, skirts, intakes, NACA ducts
+│   └── CarLights.js               # Headlights, DRL, fog lights, taillights, turn signals, reverse
 ├── materials/
-│   └── MaterialLibrary.js     # Centralized material factory + paint system
+│   └── MaterialLibrary.js         # 13 materials with paint/rim/caliper swap system
 ├── effects/
-│   ├── ParticleSystem.js      # Floating ambient dust motes
-│   ├── StudioFloor.js         # Reflective stage + glowing accent ring + grid
-│   └── UnderglowFX.js         # Pulsing under-car glow plane (color-tracked to paint)
+│   ├── ParticleSystem.js         # Seeded ambient dust with bounds wrapping
+│   ├── StudioFloor.js             # Reflective floor + dual glow rings + grid + mode transitions
+│   └── UnderglowFX.js             # Pulsing glow plane + ground point light
+├── audio/
+│   └── AudioEngine.js             # Procedural Web Audio: engine, ambient, clicks, spray, whoosh
+├── physics/
+│   └── PhysicsSimulator.js         # RPM, speed, suspension (pitch/roll/bounce), braking, tire slip
+├── interaction/
+│   ├── KeyboardController.js      # 20+ keyboard shortcuts
+│   ├── HotspotSystem.js           # 3D clickable markers with camera focus + info panel
+│   └── ScreenshotManager.js       # PNG capture from WebGL canvas
 ├── ui/
-│   ├── HUD.js                 # Top bar, spec sheet panel, bottom performance strip
-│   ├── Configurator.js        # Color swatches + toggle switches
-│   └── PerformanceMeter.js    # Optional debug FPS/draw-call overlay (?debug=1)
+│   ├── HUD.js                     # Top bar, 3-section spec sheet, live RPM/speed, cinematic indicator
+│   ├── Configurator.js            # Tabbed panel: Paint / Wheels / Scene / Camera
+│   ├── HotspotPanel.js            # Slide-up info panel with specs + description
+│   └── PerformanceMeter.js        # Debug FPS/draw-call/triangle overlay (?debug=1)
 └── utils/
-    ├── geometry.js            # Reusable geometry factories + disposal helpers
-    ├── math.js                # lerp, clamp, easing, mapRange, randomRange
-    └── debug.js               # URL-param debug mode + logging
+    ├── geometry.js                # Reusable geometry factories + disposal + counting
+    ├── math.js                    # 20+ math helpers: easing, SeededRandom, formatting
+    └── debug.js                   # URL-param debug mode + log buffer
 ```
-
-### Data Flow
-
-```
-User Interaction (click swatch / toggle)
-        |
-        v
-StateManager.set('paint', {...})
-        |
-        v
-EventBus.emit('state:change:paint')
-        |
-        +--> MaterialLibrary   --> updates MeshPhysicalMaterial
-        +--> StudioFloor       --> updates ring color
-        +--> UnderglowFX      --> updates glow color
-        +--> Aerodynamics      --> updates intake strip color
-```
-
-The car's `update(dt, t)` method is called each frame by `SceneManager`'s ticker system — it spins the wheels and applies a subtle hover breathing animation.
 
 ---
 
 ## Features
 
 ### Visual
-- **Procedural car model** — every panel built in code, no external 3D assets
-- **Cinematic 4-point lighting** — key (shadow-casting), cyan rim, warm fill, overhead spot
-- **Procedural environment map** — custom shader gradient for realistic reflections
-- **Post-processing pipeline** — UnrealBloomPass (glow) + SMAA (edge anti-aliasing) + OutputPass
-- **Floating particle system** — 250 ambient dust motes with additive blending
-- **Pulsing underglow** — color-tracked to the active paint, additive-blended
+- **Procedural car model** — 100+ meshes built entirely in code
+- **3 vehicle variants** — Aether GT (hypercar), Phantom R (track), Vortex S (GT)
+- **5 scene modes** — Studio, Daylight, Sunset, Night, Cyberpunk
+- **5-point cinematic lighting** — key, rim, fill, spot, hemisphere with smooth transitions
+- **Post-processing pipeline** — Bloom + SMAA + Vignette + OutputPass
+- **Procedural environment maps** — custom GLSL shader gradient per scene mode
+- **Particle system** — 250 seeded ambient dust motes
+- **Dual underglow** — pulsing glow plane + ground point light
 
 ### Interactive
-- **8 paint colors** — Inferno, Abyss, Liquid Silver, Poison, Cobalt, Sunset, Pearl, Stealth
-- **Live toggles** — Headlights, Underglow, Auto-Rotate, Studio Floor
-- **Orbit controls** — drag to rotate, scroll to zoom, right-drag to pan
-- **Camera presets** — hero, front, side, rear, top, low (triggerable via `bus.emit('camera:preset', 'side')`)
-- **Animated intro** — camera eases in from a wide shot on page load
-- **Live HUD** — technical spec sheet, performance strip, fluctuating RPM readout
+- **18 paint colors** across 5 categories (metallic, pearl, matte, candy, chrome)
+- **5 rim finishes** and **6 caliper colors**
+- **12 camera presets** with FOV animation + eased transitions
+- **Cinematic demo mode** — auto-plays a 9-shot camera sequence
+- **6 interactive hotspots** — click car parts for specs + descriptions
+- **Physics simulation** — engine RPM, speed, suspension pitch/roll, braking
+- **Procedural audio** — engine hum, ambient drone, UI clicks, paint spray
+- **Screenshot capture** — save current view as PNG
+- **20+ keyboard shortcuts** — camera, color, scene, vehicle, toggles
+- **Config save/share** — serialize state to JSON
 
 ### Debug
-- Add `?debug=1` to the URL for an FPS / draw-call / triangle-count overlay
-- `window.__NEXUS` exposes the app instance for console inspection
+- `?debug=1` for FPS/draw-call/triangle/geometry/texture/program overlay
+- `window.__NEXUS` for console inspection
 
 ---
 
-## Technical Highlights
+## Keyboard Shortcuts
 
-| Concern | Implementation |
-|---|---|
-| **Decoupling** | EventBus pub/sub — no sibling-to-sibling imports |
-| **State** | Centralized StateManager with path-based get/set + change events |
-| **Disposal** | Every component implements `dispose()` — geometries, materials, listeners cleaned up |
-| **Config** | All specs/dimensions/colors in `carSpecs.js` — single source of truth |
-| **Post-processing** | EffectComposer with bloom + SMAA, state-driven intensity |
-| **Environment** | PMREMGenerator + custom shader gradient for IBL reflections |
-| **Materials** | MeshPhysicalMaterial with clearcoat for automotive paint |
+| Key | Action |
+|-----|--------|
+| `1-6` | Camera presets (hero, front, side, rear, top, low) |
+| `C` / `Shift+C` | Next / previous paint color |
+| `H` | Toggle headlights |
+| `G` | Toggle underglow |
+| `R` | Toggle auto-rotate |
+| `F` | Toggle studio floor |
+| `Q` / `W` | Previous / next scene mode |
+| `V` / `Shift+V` | Next / previous vehicle variant |
+| `Space` | Toggle cinematic mode |
+| `S` | Take screenshot |
+| `Esc` | Close overlays |
 
 ---
 
 ## Dependencies
 
-All loaded via CDN (importmap) — no `npm install` required:
-
-- **Three.js** r0.160 (core, OrbitControls, RoundedBoxGeometry, EffectComposer, UnrealBloomPass, SMAAPass, OutputPass)
-- **Google Fonts** — Bricolage Grotesque (display) + JetBrains Mono (mono)
+All via CDN importmap — no `npm install`:
+- **Three.js** r0.160
+- **Google Fonts** — Bricolage Grotesque + JetBrains Mono
 
 ---
 
 ## License
 
-MIT — use it, modify it, ship it.
+MIT
