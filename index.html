@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NEXUS 3D — Aether GT Hypercar</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300;12..96,500;12..96,700;12..96,900&family=JetBrains+Mono:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+
+  <!-- Loading screen -->
+  <div id="loader">
+    <div class="loader-ring"></div>
+    <div class="loader-text">Initializing Aether GT</div>
+  </div>
+
+  <!-- 3D canvas mount point -->
+  <div id="canvas-wrap"></div>
+
+  <!-- HUD overlay mount point (populated by UI modules) -->
+  <div id="hud"></div>
+
+  <!-- ES Module entry point -->
+  <script type="module" src="src/main.js"></script>
+
+</body>
+</html>
