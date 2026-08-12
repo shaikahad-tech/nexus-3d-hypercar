@@ -17,21 +17,21 @@ import state from '../core/StateManager.js';
 import bus from '../core/EventBus.js';
 import { lerp } from '../utils/math.js';
 
-// Custom vignette shader
+// Custom vignette shader — uses texture() for WebGL2 compatibility
 const VignetteShader = {
   uniforms: {
     tDiffuse: { value: null },
     offset: { value: 1.0 },
     darkness: { value: 1.0 },
   },
-  vertexShader: `
+  vertexShader: /* glsl */`
     varying vec2 vUv;
     void main() {
       vUv = uv;
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }
   `,
-  fragmentShader: `
+  fragmentShader: /* glsl */
     uniform sampler2D tDiffuse;
     uniform float offset;
     uniform float darkness;

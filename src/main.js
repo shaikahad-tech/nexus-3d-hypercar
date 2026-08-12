@@ -1,21 +1,6 @@
 /**
  * main.js — Application entry point / bootstrap.
  *
- * Architecture flow:
- *   1. Create SceneManager (owns renderer, scene, camera, RAF loop)
- *   2. Create AssetLoader + Environment (procedural env map)
- *   3. Create LightingRig (cinematic 5-point studio lighting)
- *   4. Create CarBuilder (component-based vehicle assembly)
- *   5. Create effects (Particles, StudioFloor, UnderglowFX)
- *   6. Create PostFX (bloom + SMAA + vignette pipeline)
- *   7. Create CameraDirector (orbit controls + 12 cinematic presets)
- *   8. Create PhysicsSimulator (engine RPM, suspension, braking)
- *   9. Create AudioEngine (procedural Web Audio sound synthesis)
- *  10. Create SceneModeManager (studio/day/sunset/night/cyberpunk)
- *  11. Create Interaction systems (Keyboard, Hotspots, Screenshot)
- *  12. Init UI (HUD + Configurator + HotspotPanel + PerformanceMeter)
- *  13. Register tickers on SceneManager → start render loop
- *
  * Every subsystem communicates via the EventBus — no direct imports
  * between siblings. The only thing that knows about everything is
  * this file.
@@ -50,6 +35,51 @@ import ScreenshotManager from './interaction/ScreenshotManager.js';
 
 import { log } from './utils/debug.js';
 
+/** Show an error overlay on the page so crashes are visible */
+function showFatalError(message, error) {
+  const loader = document.getElementById('loader');
+  if (loader) loader.style.display = 'none';
+
+  let overlay = document.getElementById('fatal-error');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'fatal-error';
+    overlay.style.cssText = `
+      position:fixed; inset:0; z-index:9999;
+      background:#0a0c10; color:#e8eaed;
+      font-family:'JetBrains Mono',monospace; font-size:13px;
+      padding:40px; overflow:auto; line-height:1.6;
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  const stack = error?.stack || error?.message || String(error || '');
+  overlay.innerHTML = `
+    <h2 style="color:#ff3d2e;font-family:'Bricolage Grotesque',sans-serif;font-size:22px;margin-bottom:16px;">
+      NEXUS 3D — Initialization Error
+    </h2>
+    <p style="color:#8b919e;margin-bottom:20px;">${message}</p>
+    <pre style="background:#141821;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:16px;overflow-x:auto;color:#ff6b6b;font-size:12px;white-space:pre-wrap;">${stack}</pre>
+    <p style="color:#5a5f6a;margin-top:20px;font-size:11px;">
+      Open the browser console (F12) for more details. Take a screenshot of this error and report it.
+    </p>
+  `;
+}
+
+/** Wrap an init step in try/catch with a descriptive label */
+function step(label, fn) {
+  try {
+    log(`[App] ${label}...`);
+    const result = fn();
+    log(`[App] ✓ ${label}`);
+    return result;
+  } catch (err) {
+    showFatalError(`Failed during: ${label}`, err);
+    console.error(`[App] ✗ ${label}:`, err);
+    throw err;
+  }
+}
+
 class App {
   constructor() {
     this.sceneMgr = null;
@@ -71,11 +101,9 @@ class App {
     this.keyboard = null;
     this.hotspots = null;
     this.screenshot = null;
-    this._fpsHistory = [];
     this._perfCheckTimer = 0;
   }
 
-  /** Check if WebGL is available before doing anything else */
   _checkWebGL() {
     try {
       const canvas = document.createElement('canvas');
@@ -83,10 +111,7 @@ class App {
       if (!gl) throw new Error('No WebGL context');
       return true;
     } catch (e) {
-      const errEl = document.getElementById('webgl-error');
-      const loader = document.getElementById('loader');
-      if (loader) loader.style.display = 'none';
-      if (errEl) errEl.style.display = 'flex';
+      showFatalError('WebGL is not supported by your browser or device.', e);
       return false;
     }
   }
@@ -97,67 +122,79 @@ class App {
     if (!this._checkWebGL()) return;
 
     const container = document.getElementById('canvas-wrap');
-    this.sceneMgr = new SceneManager(container);
 
-    // Wire loading progress bar to AssetLoader events
+    // --- Phase 1: Core setup ---
+    this.sceneMgr = step('SceneManager', () => new SceneManager(container));
+
     this._wireLoader();
 
-    const loader = new AssetLoader(this.sceneMgr.renderer);
-    this.env = new Environment(this.sceneMgr.scene, this.sceneMgr.renderer, loader);
-    await this.env.load();
+    const loader = step('AssetLoader', () => new AssetLoader(this.sceneMgr.renderer));
+    this.env = step('Environment', () => new Environment(this.sceneMgr.scene, this.sceneMgr.renderer, loader));
 
-    this.lighting = new LightingRig(this.sceneMgr.scene);
+    // --- Phase 2: Load assets ---
+    try {
+      await this.env.load();
+      log('[App] ✓ Environment loaded');
+    } catch (err) {
+      showFatalError('Failed to load environment assets.', err);
+      throw err;
+    }
 
-    this.car = new CarBuilder();
+    // --- Phase 3: Build 3D scene ---
+    this.lighting = step('LightingRig', () => new LightingRig(this.sceneMgr.scene));
+    this.car = step('CarBuilder', () => new CarBuilder());
     this.sceneMgr.scene.add(this.car.group);
 
-    this.particles = new ParticleSystem({ count: 250 });
+    this.particles = step('ParticleSystem', () => new ParticleSystem({ count: 250 }));
     this.sceneMgr.scene.add(this.particles.object);
 
-    this.floor = new StudioFloor();
+    this.floor = step('StudioFloor', () => new StudioFloor());
     this.sceneMgr.scene.add(this.floor.group);
 
-    this.underglow = new UnderglowFX();
+    this.underglow = step('UnderglowFX', () => new UnderglowFX());
     this.sceneMgr.scene.add(this.underglow.object);
     this.sceneMgr.scene.add(this.underglow.light);
 
-    this.postfx = new PostFX(this.sceneMgr.renderer, this.sceneMgr.scene, this.sceneMgr.camera);
+    // --- Phase 4: Post-processing ---
+    this.postfx = step('PostFX', () => new PostFX(this.sceneMgr.renderer, this.sceneMgr.scene, this.sceneMgr.camera));
 
-    this.cameraDir = new CameraDirector(this.sceneMgr.camera, this.sceneMgr.domElement);
+    // --- Phase 5: Camera + physics ---
+    this.cameraDir = step('CameraDirector', () => new CameraDirector(this.sceneMgr.camera, this.sceneMgr.domElement));
+    this.physics = step('PhysicsSimulator', () => new PhysicsSimulator());
 
-    this.physics = new PhysicsSimulator();
-
-    this.sceneModeMgr = new SceneModeManager(
+    this.sceneModeMgr = step('SceneModeManager', () => new SceneModeManager(
       this.sceneMgr, this.lighting, this.env, this.postfx, this.floor
-    );
+    ));
 
-    this.keyboard = new KeyboardController();
+    // --- Phase 6: Interaction ---
+    this.keyboard = step('KeyboardController', () => new KeyboardController());
     this.keyboard.attach();
 
-    this.hotspots = new HotspotSystem(this.sceneMgr.camera, this.sceneMgr.domElement);
+    this.hotspots = step('HotspotSystem', () => new HotspotSystem(this.sceneMgr.camera, this.sceneMgr.domElement));
     this.sceneMgr.scene.add(this.hotspots.group);
 
-    this.screenshot = new ScreenshotManager(this.sceneMgr.renderer);
+    this.screenshot = step('ScreenshotManager', () => new ScreenshotManager(this.sceneMgr.renderer));
     this.sceneMgr.renderer.userData.scene = this.sceneMgr.scene;
     this.sceneMgr.renderer.userData.camera = this.sceneMgr.camera;
 
-    this.hud = new HUD();
+    // --- Phase 7: UI ---
+    this.hud = step('HUD', () => new HUD());
     this.hud.init();
 
-    this.configurator = new Configurator();
+    this.configurator = step('Configurator', () => new Configurator());
     this.configurator.init();
 
-    this.hotspotPanel = new HotspotPanel();
+    this.hotspotPanel = step('HotspotPanel', () => new HotspotPanel());
 
-    this.perfMeter = new PerformanceMeter(this.sceneMgr.renderer);
+    this.perfMeter = step('PerformanceMeter', () => new PerformanceMeter(this.sceneMgr.renderer));
 
+    // --- Phase 8: Start ---
     this.sceneMgr.addTicker((dt, t) => this._tick(dt, t));
 
     bus.on('scene:resize', ({ width, height }) => {
       this.postfx.setSize(width, height);
     });
 
-    // Screenshot flash effect
     bus.on('screenshot:saved', () => this._flashScreen());
 
     state.set('scene.ready', true);
@@ -174,7 +211,6 @@ class App {
     log('[App] ready — all subsystems initialized');
   }
 
-  /** Wire the AssetLoader progress events to the loading bar UI */
   _wireLoader() {
     const bar = document.getElementById('loaderBar');
     const text = document.getElementById('loaderProgress');
@@ -191,7 +227,6 @@ class App {
     });
   }
 
-  /** Flash effect when taking a screenshot */
   _flashScreen() {
     const flash = document.getElementById('screenshot-flash');
     if (!flash) return;
@@ -200,39 +235,43 @@ class App {
   }
 
   _tick(dt, t) {
-    this.physics.update(dt, t);
-    const physicsData = this.physics.getPhysicsData();
+    try {
+      this.physics.update(dt, t);
+      const physicsData = this.physics.getPhysicsData();
 
-    this.cameraDir.update(dt);
-    this.car.update(dt, t, physicsData);
+      this.cameraDir.update(dt);
+      this.car.update(dt, t, physicsData);
 
-    this.particles.update(dt, t);
-    this.floor.update(dt, t);
-    this.underglow.update(dt, t);
-    this.hotspots.update(dt, t);
+      this.particles.update(dt, t);
+      this.floor.update(dt, t);
+      this.underglow.update(dt, t);
+      this.hotspots.update(dt, t);
 
-    this.audio.update(dt, t);
-    this.lighting.update(dt);
+      this.audio.update(dt, t);
+      this.lighting.update(dt);
 
-    this.hud.updateRPM(t, physicsData.rpm, physicsData.speed);
-    this.perfMeter.update();
+      this.hud.updateRPM(t, physicsData.rpm, physicsData.speed);
+      this.perfMeter.update();
 
-    // Performance auto-scaling — check FPS every 3 seconds
-    this._perfCheckTimer += dt;
-    if (this._perfCheckTimer > 3.0) {
-      this._perfCheckTimer = 0;
-      this._autoScaleQuality();
+      this._perfCheckTimer += dt;
+      if (this._perfCheckTimer > 3.0) {
+        this._perfCheckTimer = 0;
+        this._autoScaleQuality();
+      }
+
+      this.postfx.render();
+    } catch (err) {
+      console.error('[App] tick error:', err);
+      // Stop the render loop to avoid spam
+      this.sceneMgr?.stop();
+      showFatalError('Error during render loop (tick).', err);
     }
-
-    this.postfx.render();
   }
 
-  /** Automatically reduce visual quality if FPS drops */
   _autoScaleQuality() {
-    const info = this.sceneMgr.renderer.info;
-    // Use the perf meter's FPS if available, otherwise estimate
-    const fps = this.perfMeter?.frames ?
-      Math.round((this.perfMeter.frames * 1000) / (performance.now() - this.perfMeter.lastTime + 1)) : 60;
+    const fps = this.perfMeter?.frames
+      ? Math.round((this.perfMeter.frames * 1000) / (performance.now() - this.perfMeter.lastTime + 1))
+      : 60;
 
     if (fps < 30 && state.get('shadowsEnabled')) {
       log('[App] FPS low, disabling shadows for performance');
@@ -267,10 +306,26 @@ class App {
 
 const app = new App();
 
+// Global error handlers — catch uncaught errors and promise rejections
+window.addEventListener('error', (e) => {
+  showFatalError('Uncaught error:', e.error || e.message);
+});
+
+window.addEventListener('unhandledrejection', (e) => {
+  showFatalError('Unhandled promise rejection:', e.reason);
+});
+
+function boot() {
+  app.init().catch((err) => {
+    console.error('[App] init failed:', err);
+    showFatalError('Application failed to initialize.', err);
+  });
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => app.init().catch(console.error));
+  document.addEventListener('DOMContentLoaded', boot);
 } else {
-  app.init().catch(console.error);
+  boot();
 }
 
 window.__NEXUS = app;
