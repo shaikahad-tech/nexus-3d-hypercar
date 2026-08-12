@@ -21,6 +21,41 @@
     }
   }
   </script>
+
+  <!-- Inline error handler — runs BEFORE main.js, catches everything -->
+  <script>
+    window.__showFatalError = function(message, error) {
+      var loader = document.getElementById('loader');
+      if (loader) loader.style.display = 'none';
+      var overlay = document.getElementById('fatal-error') || document.createElement('div');
+      overlay.id = 'fatal-error';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#0a0c10;color:#e8eaed;font-family:monospace;font-size:13px;padding:40px;overflow:auto;line-height:1.6;';
+      var stack = (error && error.stack) ? error.stack : (error && error.message) ? error.message : String(error || '');
+      overlay.innerHTML = '<h2 style="color:#ff3d2e;font-size:22px;margin-bottom:16px">NEXUS 3D — Error</h2>' +
+        '<p style="color:#8b919e;margin-bottom:20px">' + message + '</p>' +
+        '<pre style="background:#141821;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:16px;overflow-x:auto;color:#ff6b6b;font-size:12px;white-space:pre-wrap">' +
+        stack.replace(/</g, '<').replace(/>/g, '>') + '</pre>';
+      if (!overlay.parentNode) document.body.appendChild(overlay);
+    };
+
+    // Catch uncaught errors
+    window.addEventListener('error', function(e) {
+      window.__showFatalError('Uncaught error:', e.error || { message: e.message, stack: '' });
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+      window.__showFatalError('Unhandled promise rejection:', e.reason);
+    });
+
+    // 15-second timeout — if loader is still visible, show a message
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(function() {
+        var loader = document.getElementById('loader');
+        if (loader && loader.style.display !== 'none' && !loader.classList.contains('hide')) {
+          window.__showFatalError('The application is taking too long to load. This usually means a JavaScript error occurred during initialization. Open the browser console (F12) to see the error.', { message: 'Timeout: loader still visible after 15 seconds', stack: 'Check browser console (F12) for the actual error message.' });
+        }
+      }, 15000);
+    });
+  </script>
 </head>
 <body>
 
@@ -52,8 +87,8 @@
   <!-- Screenshot flash effect -->
   <div id="screenshot-flash"></div>
 
-  <!-- ES Module entry point -->
-  <script type="module" src="src/main.js"></script>
+  <!-- ES Module entry point — cache-bust query to force browser to load latest version -->
+  <script type="module" src="src/main.js?v=2"></script>
 
 </body>
 </html>

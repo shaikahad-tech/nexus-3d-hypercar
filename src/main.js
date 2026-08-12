@@ -35,47 +35,25 @@ import ScreenshotManager from './interaction/ScreenshotManager.js';
 
 import { log } from './utils/debug.js';
 
-/** Show an error overlay on the page so crashes are visible */
+// Use the global error handler from index.html if available
 function showFatalError(message, error) {
-  const loader = document.getElementById('loader');
-  if (loader) loader.style.display = 'none';
-
-  let overlay = document.getElementById('fatal-error');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'fatal-error';
-    overlay.style.cssText = `
-      position:fixed; inset:0; z-index:9999;
-      background:#0a0c10; color:#e8eaed;
-      font-family:'JetBrains Mono',monospace; font-size:13px;
-      padding:40px; overflow:auto; line-height:1.6;
-    `;
-    document.body.appendChild(overlay);
+  if (window.__showFatalError) {
+    window.__showFatalError(message, error);
+  } else {
+    console.error('[FATAL]', message, error);
   }
-
-  const stack = error?.stack || error?.message || String(error || '');
-  overlay.innerHTML = `
-    <h2 style="color:#ff3d2e;font-family:'Bricolage Grotesque',sans-serif;font-size:22px;margin-bottom:16px;">
-      NEXUS 3D — Initialization Error
-    </h2>
-    <p style="color:#8b919e;margin-bottom:20px;">${message}</p>
-    <pre style="background:#141821;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:16px;overflow-x:auto;color:#ff6b6b;font-size:12px;white-space:pre-wrap;">${stack}</pre>
-    <p style="color:#5a5f6a;margin-top:20px;font-size:11px;">
-      Open the browser console (F12) for more details. Take a screenshot of this error and report it.
-    </p>
-  `;
 }
 
-/** Wrap an init step in try/catch with a descriptive label */
+// Wrap each init step in try/catch with a label
 function step(label, fn) {
   try {
     log(`[App] ${label}...`);
     const result = fn();
-    log(`[App] ✓ ${label}`);
+    log(`[App] OK ${label}`);
     return result;
   } catch (err) {
     showFatalError(`Failed during: ${label}`, err);
-    console.error(`[App] ✗ ${label}:`, err);
+    console.error(`[App] FAIL ${label}:`, err);
     throw err;
   }
 }
@@ -117,7 +95,7 @@ class App {
   }
 
   async init() {
-    log('[App] initializing...');
+    console.log('[App] initializing...');
 
     if (!this._checkWebGL()) return;
 
@@ -125,7 +103,6 @@ class App {
 
     // --- Phase 1: Core setup ---
     this.sceneMgr = step('SceneManager', () => new SceneManager(container));
-
     this._wireLoader();
 
     const loader = step('AssetLoader', () => new AssetLoader(this.sceneMgr.renderer));
@@ -134,7 +111,7 @@ class App {
     // --- Phase 2: Load assets ---
     try {
       await this.env.load();
-      log('[App] ✓ Environment loaded');
+      console.log('[App] OK Environment loaded');
     } catch (err) {
       showFatalError('Failed to load environment assets.', err);
       throw err;
@@ -155,7 +132,7 @@ class App {
     this.sceneMgr.scene.add(this.underglow.object);
     this.sceneMgr.scene.add(this.underglow.light);
 
-    // --- Phase 4: Post-processing ---
+    // --- Phase 4: Post-processing (optional, falls back to direct render) ---
     this.postfx = step('PostFX', () => new PostFX(this.sceneMgr.renderer, this.sceneMgr.scene, this.sceneMgr.camera));
 
     // --- Phase 5: Camera + physics ---
@@ -208,7 +185,7 @@ class App {
       setTimeout(() => loaderEl.classList.add('hide'), 500);
     }
 
-    log('[App] ready — all subsystems initialized');
+    console.log('[App] ready — all subsystems initialized');
   }
 
   _wireLoader() {
@@ -262,7 +239,6 @@ class App {
       this.postfx.render();
     } catch (err) {
       console.error('[App] tick error:', err);
-      // Stop the render loop to avoid spam
       this.sceneMgr?.stop();
       showFatalError('Error during render loop (tick).', err);
     }
@@ -305,15 +281,6 @@ class App {
 }
 
 const app = new App();
-
-// Global error handlers — catch uncaught errors and promise rejections
-window.addEventListener('error', (e) => {
-  showFatalError('Uncaught error:', e.error || e.message);
-});
-
-window.addEventListener('unhandledrejection', (e) => {
-  showFatalError('Unhandled promise rejection:', e.reason);
-});
 
 function boot() {
   app.init().catch((err) => {

@@ -3,8 +3,8 @@
  * Bloom (selective glow), SMAA (edge anti-aliasing), Vignette,
  * and OutputPass (tone mapping + color space).
  *
- * Bloom intensity is state-driven and transitions smoothly
- * when scene modes change.
+ * If post-processing fails to initialize, it falls back to
+ * direct renderer.render() so the app still works.
  */
 import * as THREE from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -17,7 +17,7 @@ import state from '../core/StateManager.js';
 import bus from '../core/EventBus.js';
 import { lerp } from '../utils/math.js';
 
-// Custom vignette shader — uses texture() for WebGL2 compatibility
+// Custom vignette shader
 const VignetteShader = {
   uniforms: {
     tDiffuse: { value: null },
@@ -50,11 +50,20 @@ class PostFX {
     this.renderer = renderer;
     this.scene = scene;
     this.camera = camera;
-    this.enabled = true;
+    this.enabled = false; // Start disabled, enable if build succeeds
     this._targetBloom = 0.6;
     this._currentBloom = 0.6;
-    this._build();
-    this._bindEvents();
+    this.composer = null;
+
+    try {
+      this._build();
+      this._bindEvents();
+      this.enabled = true;
+      console.log('[PostFX] Post-processing pipeline initialized successfully');
+    } catch (err) {
+      console.warn('[PostFX] Failed to initialize post-processing, falling back to direct render:', err);
+      this.enabled = false;
+    }
   }
 
   _build() {
@@ -62,21 +71,21 @@ class PostFX {
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
-    // Bloom — makes emissive lights and underglow pop
+    // Bloom
     this.bloomPass = new UnrealBloomPass(size, 0.6, 0.4, 0.85);
     this.composer.addPass(this.bloomPass);
 
-    // Vignette — subtle darkening at edges
+    // Vignette
     this.vignettePass = new ShaderPass(VignetteShader);
     this.vignettePass.uniforms.offset.value = 1.0;
     this.vignettePass.uniforms.darkness.value = 0.5;
     this.composer.addPass(this.vignettePass);
 
-    // SMAA — edge anti-aliasing
+    // SMAA
     this.smaaPass = new SMAAPass(size.x, size.y);
     this.composer.addPass(this.smaaPass);
 
-    // Output (color space + tone mapping pass)
+    // Output
     this.outputPass = new OutputPass();
     this.composer.addPass(this.outputPass);
 
@@ -104,31 +113,35 @@ class PostFX {
   }
 
   setVignette(offset, darkness) {
-    this.vignettePass.uniforms.offset.value = offset;
-    this.vignettePass.uniforms.darkness.value = darkness;
+    if (this.vignettePass) {
+      this.vignettePass.uniforms.offset.value = offset;
+      this.vignettePass.uniforms.darkness.value = darkness;
+    }
   }
 
   setSize(w, h) {
-    this.composer.setSize(w, h);
-    this.bloomPass.resolution.set(w, h);
+    if (this.composer) {
+      this.composer.setSize(w, h);
+      this.bloomPass?.resolution.set(w, h);
+    }
   }
 
   render() {
-    // Smooth bloom transitions
-    if (Math.abs(this._currentBloom - this._targetBloom) > 0.001) {
-      this._currentBloom = lerp(this._currentBloom, this._targetBloom, 0.05);
-      this.bloomPass.strength = this._currentBloom;
-    }
-
-    if (this.enabled) {
+    if (this.enabled && this.composer) {
+      // Smooth bloom transitions
+      if (Math.abs(this._currentBloom - this._targetBloom) > 0.001) {
+        this._currentBloom = lerp(this._currentBloom, this._targetBloom, 0.05);
+        this.bloomPass.strength = this._currentBloom;
+      }
       this.composer.render();
     } else {
+      // Fallback: direct render without post-processing
       this.renderer.render(this.scene, this.camera);
     }
   }
 
   dispose() {
-    this.composer.dispose();
+    if (this.composer) this.composer.dispose();
   }
 }
 
